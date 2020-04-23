@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"github.com/zhouhui8915/engine.io-go/message"
 	"github.com/zhouhui8915/engine.io-go/parser"
 	"github.com/zhouhui8915/engine.io-go/polling"
@@ -21,17 +22,16 @@ var InvalidError = errors.New("invalid transport")
 
 var transports = []string{"polling", "websocket"}
 
-var creaters map[string]transport.Creater
+var creators map[string]transport.Creater
 
 func init() {
-	creaters = make(map[string]transport.Creater)
-
+	creators = make(map[string]transport.Creater)
 	for _, t := range transports {
 		switch t {
 		case "polling":
-			creaters[t] = polling.Creater
+			creators[t] = polling.Creater
 		case "websocket":
-			creaters[t] = websocket.Creater
+			creators[t] = websocket.Creater
 		}
 	}
 }
@@ -40,13 +40,13 @@ type MessageType message.MessageType
 
 const (
 	MessageBinary MessageType = MessageType(message.MessageBinary)
-	MessageText MessageType = MessageType(message.MessageText)
+	MessageText   MessageType = MessageType(message.MessageText)
 )
 
 type state int
 
 const (
-	stateUnknow state = iota
+	stateUnknown state = iota
 	stateNormal
 	stateUpgrading
 	stateClosing
@@ -77,19 +77,19 @@ func newClientConn(opts *Options, u *url.URL) (client *clientConn, err error) {
 		opts.Transport = "websocket"
 	}
 
-	_, exists := creaters[opts.Transport]
+	_, exists := creators[opts.Transport]
 	if !exists {
 		return nil, InvalidError
 	}
 
 	client = &clientConn{
-		url:           u,
-		options:       opts,
-		state:         stateNormal,
-		pingTimeout:   60000 * time.Millisecond,
-		pingInterval:  25000 * time.Millisecond,
-		pingChan:      make(chan bool),
-		readerChan:    make(chan *connReader),
+		url:          u,
+		options:      opts,
+		state:        stateNormal,
+		pingTimeout:  60000 * time.Millisecond,
+		pingInterval: 25000 * time.Millisecond,
+		pingChan:     make(chan bool),
+		readerChan:   make(chan *connReader),
 	}
 
 	err = client.onOpen()
@@ -209,15 +209,6 @@ func (c *clientConn) OnPacket(r *parser.PacketDecoder) {
 				c.writerLocker.Unlock()
 
 				c.upgraded()
-				//fmt.Println("probe")
-
-				/*
-					w, _ = c.getCurrent().NextWriter(message.MessageText, parser.MESSAGE)
-					if w != nil {
-						w.Write([]byte("2[\"message\",\"testtesttesttesttesttest\"]"))
-						w.Close()
-					}
-				*/
 			}
 		}
 	case parser.MESSAGE:
@@ -260,7 +251,7 @@ func (c *clientConn) onOpen() error {
 		return err
 	}
 
-	creater, exists := creaters["polling"]
+	creater, exists := creators["polling"]
 	if !exists {
 		return InvalidError
 	}
@@ -268,7 +259,7 @@ func (c *clientConn) onOpen() error {
 	q := c.request.URL.Query()
 	q.Set("transport", "polling")
 	c.request.URL.RawQuery = q.Encode()
-	if (c.options.Header != nil) {
+	if c.options.Header != nil {
 		c.request.Header = c.options.Header
 	}
 
@@ -288,7 +279,6 @@ func (c *clientConn) onOpen() error {
 	if err != nil {
 		return err
 	}
-	//fmt.Println(string(p))
 
 	type connectionInfo struct {
 		Sid          string        `json:"sid"`
@@ -305,40 +295,15 @@ func (c *clientConn) onOpen() error {
 	msg.PingInterval *= 1000 * 1000
 	msg.PingTimeout *= 1000 * 1000
 
-	//fmt.Println(msg)
-
 	c.pingInterval = msg.PingInterval
 	c.pingTimeout = msg.PingTimeout
 	c.id = msg.Sid
-
-	c.getCurrent().Close()
-
-	q.Set("sid", c.id)
-	c.request.URL.RawQuery = q.Encode()
-
-	transport, err = creater.Client(c.request)
-	if err != nil {
-		return err
-	}
-	c.setCurrent("polling", transport)
-
-	pack, err = c.getCurrent().NextReader()
-	if err != nil {
-		return err
-	}
-
-	p2 := make([]byte, 4096)
-	l, err = pack.Read(p2)
-	if err != nil {
-		return err
-	}
-	//fmt.Println(string(p2))
 
 	if c.options.Transport == "polling" {
 		//over
 	} else if c.options.Transport == "websocket" {
 		//upgrade
-		creater, exists = creaters["websocket"]
+		creater, exists = creators["websocket"]
 		if !exists {
 			return InvalidError
 		}
@@ -363,9 +328,6 @@ func (c *clientConn) onOpen() error {
 	} else {
 		return InvalidError
 	}
-
-	//fmt.Println("end")
-
 	return nil
 }
 
@@ -428,49 +390,45 @@ func (c *clientConn) setState(state state) {
 }
 
 func (c *clientConn) pingLoop() {
-	lastPing := time.Now()
-	lastTry := lastPing
-	for {
-		now := time.Now()
-		pingDiff := now.Sub(lastPing)
-		tryDiff := now.Sub(lastTry)
-		select {
-		case ok := <-c.pingChan:
-			if !ok {
+	defer c.Close()
+	// set interval for ping
+	ticker := time.NewTicker(c.pingInterval)
+	for ; ; <-ticker.C {
+		var ierr error
+		go func() {
+			// send ping
+			c.writerLocker.Lock()
+			defer c.writerLocker.Unlock()
+			w, err := c.getCurrent().NextWriter(message.MessageText, parser.PING)
+			if err != nil {
+				ierr = err
 				return
 			}
-			lastPing = time.Now()
-			lastTry = lastPing
-		case <-time.After(c.pingInterval - tryDiff):
-			c.writerLocker.Lock()
-			if w, _ := c.getCurrent().NextWriter(message.MessageText, parser.PING); w != nil {
-				writer := newConnWriter(w, &c.writerLocker)
-				writer.Close()
-			} else {
-				c.writerLocker.Unlock()
-			}
-			lastTry = time.Now()
-		case <-time.After(c.pingTimeout - pingDiff):
-			c.Close()
+			writer := newConnWriter(w, &c.writerLocker)
+			defer writer.Close()
+		}()
+		if ierr != nil {
+			log.Errorf("pingLoop failed, %v", ierr)
+			return
+		}
+		// receive pong msg, or trigger timeout for pong msg
+		select {
+		case <-c.pingChan:
+			continue
+		case <-time.After(c.pingTimeout):
 			return
 		}
 	}
 }
 
 func (c *clientConn) readLoop() {
-
 	current := c.getCurrent()
-
-	defer func() {
-		c.OnClose(current)
-	}()
-
+	defer c.OnClose(current)
 	for {
 		current = c.getCurrent()
 		if c.getUpgrade() != nil {
 			current = c.getUpgrade()
 		}
-
 		pack, err := current.NextReader()
 		if err != nil {
 			return
