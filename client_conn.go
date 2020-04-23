@@ -404,8 +404,7 @@ func (c *clientConn) pingLoop() {
 				ierr = err
 				return
 			}
-			writer := newConnWriter(w, &c.writerLocker)
-			defer writer.Close()
+			defer w.Close()
 		}()
 		if ierr != nil {
 			log.Errorf("pingLoop failed, %v", ierr)
