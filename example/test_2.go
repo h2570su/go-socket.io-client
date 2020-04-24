@@ -32,5 +32,7 @@ func main() {
 	})
 	r := Register{PeerId: "hehe"}
 	client.Emit("register", &r)
+	time.Sleep(time.Second)
+	client.Close()
 	time.Sleep(time.Hour)
 }
