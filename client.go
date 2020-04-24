@@ -27,23 +27,22 @@ type Client struct {
 }
 
 func NewClient(uri string, opts *Options) (client *Client, err error) {
-
-	url, err := url.Parse(uri)
+	u, err := url.Parse(uri)
 	if err != nil {
 		return
 	}
-	url.Path = path.Join("/socket.io", url.Path)
-	url.Path = url.EscapedPath()
-	if strings.HasSuffix(url.Path, "socket.io") {
-		url.Path += "/"
+	u.Path = path.Join("/socket.io", u.Path)
+	u.Path = u.EscapedPath()
+	if strings.HasSuffix(u.Path, "socket.io") {
+		u.Path += "/"
 	}
-	q := url.Query()
+	q := u.Query()
 	for k, v := range opts.Query {
 		q.Set(k, v)
 	}
-	url.RawQuery = q.Encode()
+	u.RawQuery = q.Encode()
 
-	socket, err := newClientConn(opts, url)
+	socket, err := newClientConn(opts, u)
 	if err != nil {
 		return
 	}

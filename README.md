@@ -31,7 +31,7 @@ package main
 
 import (
 	"bufio"
-	"github.com/zhouhui8915/go-socket.io-client"
+	"github.com/mofadeyunduo/go-socket.io-client"
 	"log"
 	"os"
 )
