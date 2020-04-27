@@ -172,7 +172,7 @@ func (client *Client) onPacket(decoder *decoder, packet *packet) ([]interface{},
 			if lastIdx < 0 {
 				return nil, err
 			}
-			if reflect.TypeOf(args[lastIdx]).String() != "*error" {
+			if c.Args[lastIdx] != reflect.TypeOf(err) {
 				return nil, err
 			} else {
 				args[lastIdx] = &err
