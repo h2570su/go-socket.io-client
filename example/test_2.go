@@ -27,8 +27,8 @@ func main() {
 		log.Printf("NewClient error:%v\n", err)
 		return
 	}
-	client.On("keepaliveRsp", func(msg RegisterRsp, err error) {
-		fmt.Println(msg, "-------", err)
+	client.On("keepaliveRsp", func() {
+		fmt.Println( "-------")
 	})
 	r := Register{PeerId: "111"}
 	client.Emit("keepalive", &r)

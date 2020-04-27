@@ -172,11 +172,10 @@ func (client *Client) onPacket(decoder *decoder, packet *packet) ([]interface{},
 			if lastIdx < 0 {
 				return nil, err
 			}
-			if c.Args[lastIdx] != reflect.TypeOf(err) {
+			if !c.Args[lastIdx].Implements(reflect.TypeOf((*error)(nil)).Elem()) {
 				return nil, err
-			} else {
-				args[lastIdx] = &err
 			}
+			args[lastIdx] = &err
 		} else {
 			for i := len(args); i < olen; i++ {
 				args = append(args, nil)
