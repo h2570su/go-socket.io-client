@@ -27,11 +27,11 @@ func main() {
 		log.Printf("NewClient error:%v\n", err)
 		return
 	}
-	client.On("registerRsp", func(msg RegisterRsp) {
-		fmt.Println(msg)
+	client.On("keepaliveRsp", func() {
+		fmt.Println( "-------")
 	})
-	r := Register{PeerId: "hehe"}
-	client.Emit("register", &r)
+	r := Register{PeerId: "111"}
+	client.Emit("keepalive", &r)
 	time.Sleep(time.Second)
 	//client.Close()
 	time.Sleep(time.Hour)

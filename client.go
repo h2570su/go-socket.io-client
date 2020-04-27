@@ -37,6 +37,7 @@ func NewClient(uri string, opts *Options) (client *Client, err error) {
 		u.Path += "/"
 	}
 	q := u.Query()
+	q.Set("EIO", "3")
 	for k, v := range opts.Query {
 		q.Set(k, v)
 	}
@@ -60,15 +61,15 @@ func NewClient(uri string, opts *Options) (client *Client, err error) {
 	return
 }
 
-func (client *Client) On(message string, f interface{}) (err error) {
+func (client *Client) On(message string, f interface{}) error {
 	c, err := newCaller(f)
 	if err != nil {
-		return
+		return err
 	}
 	client.eventsLock.Lock()
 	client.events[message] = c
 	client.eventsLock.Unlock()
-	return
+	return nil
 }
 
 func (client *Client) Emit(message string, args ...interface{}) (err error) {
@@ -166,13 +167,21 @@ func (client *Client) onPacket(decoder *decoder, packet *packet) ([]interface{},
 	if olen > 0 {
 		packet.Data = &args
 		if err := decoder.DecodeData(packet); err != nil {
-			return nil, err
+			args = c.GetArgs()
+			lastIdx := len(args) - 1
+			if lastIdx < 0 {
+				return nil, err
+			}
+			if !c.Args[lastIdx].Implements(reflect.TypeOf((*error)(nil)).Elem()) {
+				return nil, err
+			}
+			args[lastIdx] = &err
+		} else {
+			for i := len(args); i < olen; i++ {
+				args = append(args, nil)
+			}
 		}
 	}
-	for i := len(args); i < olen; i++ {
-		args = append(args, nil)
-	}
-
 	retV := c.Call(args)
 	if len(retV) == 0 {
 		return nil, nil
@@ -223,6 +232,7 @@ func (client *Client) readLoop() error {
 		}
 		ret, err := client.onPacket(decoder, &p)
 		if err != nil {
+			// invoke something
 			return err
 		}
 		switch p.Type {
