@@ -1,3 +1,9 @@
+* This fork based on [mofadeyunduo/go-socket.io-client](https://github.com/mofadeyunduo/go-socket.io-client)
+
+And merged commits from original branch [hesh915/go-socket.io-client](https://github.com/hesh915/go-socket.io-client)
+From commits [4a28084](https://github.com/hesh915/go-socket.io-client/commit/4a28084e51bbaf224ce345a91c8740c626b7a77e) to [83ee737](https://github.com/hesh915/go-socket.io-client/commit/83ee73793ba4ec64250ecd10639dc203663a1cb8)
+
+Then modified a little bit, added a bugfix on onAck read map failed
 # go-socket.io-client
 
 go-socket.io-client is an client implementation of [socket.io](http://socket.io) in golang, which is a realtime application framework.
@@ -11,13 +17,13 @@ It is compatible with latest implementation of socket.io in node.js, and support
 Install the package with:
 
 ```bash
-go get github.com/zhouhui8915/go-socket.io-client
+go get github.com/h2570su/go-socket.io-client
 ```
 
 Import it with:
 
 ```go
-import "github.com/zhouhui8915/go-socket.io-client"
+import "github.com/h2570su/go-socket.io-client"
 ```
 
 and use `socketio_client` as the package name inside the code.
@@ -31,7 +37,7 @@ package main
 
 import (
 	"bufio"
-	"github.com/mofadeyunduo/go-socket.io-client"
+	"github.com/h2570su/go-socket.io-client"
 	"log"
 	"os"
 )
