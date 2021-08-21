@@ -1,4 +1,4 @@
-module github.com/mofadeyunduo/go-socket.io-client
+module github.com/h2570su/go-socket.io-client
 
 go 1.13
 

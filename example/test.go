@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/mofadeyunduo/go-socket.io-client"
+	"github.com/h2570su/go-socket.io-client"
 	"log"
 	"bufio"
 	"os"
