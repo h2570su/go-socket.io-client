@@ -209,6 +209,7 @@ func (client *Client) onAck(id int, decoder *decoder, packet *packet) error {
 	c, ok := client.acks[id]
 	client.eventsLock.RUnlock()
 	if !ok {
+		decoder.Close() //Emit the closechan, or Conn ReadLoop will stuck on this reader and closechan pass
 		return nil
 	}
 	client.eventsLock.Lock()
