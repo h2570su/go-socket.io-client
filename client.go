@@ -21,7 +21,9 @@ type Client struct {
 
 	eventsLock sync.RWMutex
 	events     map[string]*caller
+	acksLock   sync.RWMutex
 	acks       map[int]*caller
+	idLock     sync.Mutex
 	id         int
 	namespace  string
 }
@@ -87,8 +89,8 @@ func (client *Client) Emit(message string, args ...interface{}) (err error) {
 	}
 	args = append([]interface{}{message}, args...)
 	if c != nil {
-		client.eventsLock.Lock()
-		defer client.eventsLock.Unlock()
+		client.acksLock.Lock()
+		defer client.acksLock.Unlock()
 		id, err := client.sendId(args)
 		if err != nil {
 			return err
@@ -110,7 +112,7 @@ func (client *Client) sendConnect() error {
 }
 
 func (client *Client) sendId(args []interface{}) (int, error) {
-	client.eventsLock.Lock()
+	client.idLock.Lock()
 	packet := packet{
 		Type: _EVENT,
 		Id:   client.id,
@@ -121,7 +123,7 @@ func (client *Client) sendId(args []interface{}) (int, error) {
 	if client.id < 0 {
 		client.id = 0
 	}
-	client.eventsLock.Unlock()
+	client.idLock.Unlock()
 
 	encoder := newEncoder(client.conn)
 	err := encoder.Encode(packet)
@@ -205,16 +207,16 @@ func (client *Client) onPacket(decoder *decoder, packet *packet) ([]interface{},
 }
 
 func (client *Client) onAck(id int, decoder *decoder, packet *packet) error {
-	client.eventsLock.RLock()
+	client.acksLock.RLock()
 	c, ok := client.acks[id]
-	client.eventsLock.RUnlock()
+	client.acksLock.RUnlock()
 	if !ok {
 		decoder.Close() //Emit the closechan, or Conn ReadLoop will stuck on this reader and closechan pass
 		return nil
 	}
-	client.eventsLock.Lock()
+	client.acksLock.Lock()
 	delete(client.acks, id)
-	client.eventsLock.Unlock()
+	client.acksLock.Unlock()
 
 	args := c.GetArgs()
 	packet.Data = &args
