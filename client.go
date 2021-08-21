@@ -169,7 +169,7 @@ func (client *Client) onPacket(decoder *decoder, packet *packet) ([]interface{},
 	}
 	args := c.GetArgs()
 	olen := len(args)
-	if olen > 0 {
+	if decoder != nil && olen > 0 {
 		packet.Data = &args
 		if err := decoder.DecodeData(packet); err != nil {
 			args = c.GetArgs()
