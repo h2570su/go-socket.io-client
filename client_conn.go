@@ -74,13 +74,15 @@ type clientConn struct {
 }
 
 func newClientConn(opts *Options, u *url.URL) (client *clientConn, err error) {
-	if opts.Transport == "" {
-		opts.Transport = "websocket"
+	if opts.Transport == nil {
+		opts.Transport = []string{"websocket", "polling"}
 	}
 
-	_, exists := creators[opts.Transport]
-	if !exists {
-		return nil, InvalidError
+	for _, transport := range opts.Transport {
+		_, exists := creators[transport]
+		if !exists {
+			return nil, InvalidError
+		}
 	}
 
 	client = &clientConn{
@@ -247,66 +249,105 @@ func (c *clientConn) OnClose(server transport.Client) {
 func (c *clientConn) onOpen() error {
 
 	var err error
-	c.request, err = http.NewRequest("GET", c.url.String(), nil)
-	if err != nil {
-		return err
-	}
+	if (len(c.options.Transport) == 2 &&
+		((c.options.Transport[0] == "polling" && c.options.Transport[1] == "websocket") ||
+			(c.options.Transport[1] == "polling" && c.options.Transport[0] == "websocket"))) ||
 
-	creater, exists := creators["polling"]
-	if !exists {
-		return InvalidError
-	}
+		(len(c.options.Transport) == 1 && c.options.Transport[0] == "polling") {
 
-	q := c.request.URL.Query()
-	q.Set("transport", "polling")
-	c.request.URL.RawQuery = q.Encode()
-	if c.options.Header != nil {
-		c.request.Header = c.options.Header
-	}
+		c.request, err = http.NewRequest("GET", c.url.String(), nil)
+		if err != nil {
+			return err
+		}
 
-	transport, err := creater.Client(c.request)
-	if err != nil {
-		return err
-	}
-	c.setCurrent("polling", transport)
-
-	pack, err := c.getCurrent().NextReader()
-	if err != nil {
-		return err
-	}
-
-	p := make([]byte, 4096)
-	l, err := pack.Read(p)
-	if err != nil {
-		return err
-	}
-
-	type connectionInfo struct {
-		Sid          string        `json:"sid"`
-		Upgrades     []string      `json:"upgrades"`
-		PingInterval time.Duration `json:"pingInterval"`
-		PingTimeout  time.Duration `json:"pingTimeout"`
-	}
-
-	var msg connectionInfo
-	err = json.Unmarshal(p[:l], &msg)
-	if err != nil {
-		return err
-	}
-	msg.PingInterval *= 1000 * 1000
-	msg.PingTimeout *= 1000 * 1000
-
-	c.pingInterval = msg.PingInterval
-	c.pingTimeout = msg.PingTimeout
-	c.id = msg.Sid
-
-	if c.options.Transport == "polling" {
-		//over
-	} else if c.options.Transport == "websocket" {
-		//upgrade
-		creater, exists = creators["websocket"]
+		creater, exists := creators["polling"]
 		if !exists {
 			return InvalidError
+		}
+
+		q := c.request.URL.Query()
+		q.Set("transport", "polling")
+		c.request.URL.RawQuery = q.Encode()
+		if c.options.Header != nil {
+			c.request.Header = c.options.Header
+		}
+
+		transport, err := creater.Client(c.request)
+		if err != nil {
+			return err
+		}
+		c.setCurrent("polling", transport)
+
+		pack, err := c.getCurrent().NextReader()
+		if err != nil {
+			return err
+		}
+
+		p := make([]byte, 4096)
+		l, err := pack.Read(p)
+		if err != nil {
+			return err
+		}
+
+		type connectionInfo struct {
+			Sid          string        `json:"sid"`
+			Upgrades     []string      `json:"upgrades"`
+			PingInterval time.Duration `json:"pingInterval"`
+			PingTimeout  time.Duration `json:"pingTimeout"`
+		}
+
+		var msg connectionInfo
+		err = json.Unmarshal(p[:l], &msg)
+		if err != nil {
+			return err
+		}
+		msg.PingInterval *= 1000 * 1000
+		msg.PingTimeout *= 1000 * 1000
+
+		c.pingInterval = msg.PingInterval
+		c.pingTimeout = msg.PingTimeout
+		c.id = msg.Sid
+
+		if len(c.options.Transport) == 1 && c.options.Transport[0] == "polling" {
+			//over
+		} else if len(c.options.Transport) == 2 &&
+			(c.options.Transport[0] == "websocket" ||
+				c.options.Transport[1] == "websocket") {
+			//upgrade
+			creater, exists = creators["websocket"]
+			if !exists {
+				return InvalidError
+			}
+
+			if c.request.URL.Scheme == "https" {
+				c.request.URL.Scheme = "wss"
+			} else {
+				c.request.URL.Scheme = "ws"
+			}
+			q.Set("sid", c.id)
+			q.Set("transport", "websocket")
+			c.request.URL.RawQuery = q.Encode()
+
+			transport, err = creater.Client(c.request)
+			if err != nil {
+				return err
+			}
+			c.setUpgrading("websocket", transport)
+
+			w, err := c.getUpgrade().NextWriter(message.MessageText, parser.PING)
+			if err != nil {
+				return err
+			}
+			w.Write([]byte("probe"))
+			w.Close()
+		} else {
+			return InvalidError
+		}
+		return nil
+	} else if len(c.options.Transport) == 1 && c.options.Transport[0] == "websocket" {
+		c.request, err = http.NewRequest("GET", c.url.String(), nil)
+		if err != nil {
+			return err
 		}
 
 		if c.request.URL.Scheme == "https" {
@@ -314,26 +355,78 @@ func (c *clientConn) onOpen() error {
 		} else {
 			c.request.URL.Scheme = "ws"
 		}
-		q.Set("sid", c.id)
+
+		creater, exists := creators["websocket"]
+		if !exists {
+			return InvalidError
+		}
+
+		q := c.request.URL.Query()
 		q.Set("transport", "websocket")
 		c.request.URL.RawQuery = q.Encode()
+		if c.options.Header != nil {
+			c.request.Header = c.options.Header
+		}
 
-		transport, err = creater.Client(c.request)
+		transport, err := creater.Client(c.request)
 		if err != nil {
 			return err
 		}
 		c.setUpgrading("websocket", transport)
 
-		w, err := c.getUpgrade().NextWriter(message.MessageText, parser.PING)
+		pack, err := c.getUpgrade().NextReader()
 		if err != nil {
 			return err
 		}
-		w.Write([]byte("probe"))
-		w.Close()
-	} else {
-		return InvalidError
+
+		p := make([]byte, 4096)
+		l, err := pack.Read(p)
+		if err != nil {
+			return err
+		}
+
+		type connectionInfo struct {
+			Sid          string        `json:"sid"`
+			Upgrades     []string      `json:"upgrades"`
+			PingInterval time.Duration `json:"pingInterval"`
+			PingTimeout  time.Duration `json:"pingTimeout"`
+		}
+
+		var msg connectionInfo
+		err = json.Unmarshal(p[:l], &msg)
+		if err != nil {
+			return err
+		}
+		msg.PingInterval *= 1000 * 1000
+		msg.PingTimeout *= 1000 * 1000
+
+		c.pingInterval = msg.PingInterval
+		c.pingTimeout = msg.PingTimeout
+		c.id = msg.Sid
+
+		//upgrade
+
+		q.Set("sid", c.id)
+		q.Set("transport", "websocket")
+		c.request.URL.RawQuery = q.Encode()
+
+		//transport, err = creater.Client(c.request)
+		if err != nil {
+			return err
+		}
+		c.setCurrent("websocket", transport)
+		c.setState(stateNormal)
+
+		// w, err := c.getCurrent().NextWriter(message.MessageText, parser.PING)
+		// if err != nil {
+		// 	return err
+		// }
+		// //w.Write([]byte("probe"))
+		// w.Close()
+
+		return nil
 	}
-	return nil
+	return InvalidError
 }
 
 func (c *clientConn) getCurrent() transport.Client {

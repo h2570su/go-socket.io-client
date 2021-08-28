@@ -9,7 +9,7 @@ import (
 )
 
 type Options struct {
-	Transport string            //protocol name string,websocket polling...
+	Transport []string            //protocol name string,websocket polling...
 	Query     map[string]string //url的附加的参数
 	Header    map[string][]string
 }
