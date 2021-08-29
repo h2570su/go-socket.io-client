@@ -491,7 +491,7 @@ func (c *clientConn) pingLoop() {
 	defer c.Close()
 	// set interval for ping
 	ticker := time.NewTicker(c.pingInterval)
-	for ; ; <-ticker.C {
+	for {
 		var ierr error
 		go func() {
 			// send ping
@@ -511,9 +511,20 @@ func (c *clientConn) pingLoop() {
 		// receive pong msg, or trigger timeout for pong msg
 		select {
 		case <-c.pingChan:
-			continue
+
 		case <-time.After(c.pingTimeout):
 			return
+		}
+
+		//Prevent accidental pong stuck on top select
+	for_Ticker:
+		for {
+			select {
+			case <-ticker.C:
+				break for_Ticker
+			case <-c.pingChan:
+				continue
+			}
 		}
 	}
 }
